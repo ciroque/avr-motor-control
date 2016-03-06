@@ -44,21 +44,25 @@ int main(void)
 
 	// Mode should be 11, PWM, Phase Correct
 	// ? Ordering of the flags, doc's show 0 to the right increasing to the left, is it standard to follow that in the code?
-	TCCR0A = (1 << COM0A1) | (1 << WGM00); 
+	// ? Is it preferable to be explicit and zero out bits as well as setting bits?
+	TCCR0A = (1 << COM0A1) | (1 << WGM01) | (1 << WGM00);
 	
-	// 
+	// Enable the Interrupt Overflow for Timer 0
 	TIMSK0 = (1 << TOIE0);
 	
-	// 
+	// Set the TOP
+	// ? Do I have the mode configured I think I do?
 	OCR0A = scaleDutyCycle();
 
 	// enable interrupts
 	sei();
 
+	// reset the prescaler and use the internal clock, 
 	TCCR0B = (1 << CS00) | (1 << CS02);
 	
 	while(1) 
 	{
+		// ramp the duty cycle up and down...
 		_delay_ms(CYCLE_DELAY);
 		if(direction == INCR) 
 		{
@@ -89,6 +93,7 @@ int main(void)
 	}
 }
 
+// Timer 0 Interrupt Handler. Simply calculate and update the duty cycle.
 ISR(TIMER0_OVF_vect)
 {
 	OCR0A = scaleDutyCycle();
