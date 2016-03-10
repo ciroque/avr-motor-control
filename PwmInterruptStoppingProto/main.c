@@ -19,9 +19,11 @@
 #include <util/delay.h>
 #include <avr/interrupt.h>
 
-#define LED_ON		PORTB |= (1 << PORTB5)
-#define LED_OFF		PORTB &= ~(1 << PORTB5)
-#define LED_TOGGLE	PINB |= (1 << PINB5)
+#define VOLTAGE_CONTROL_ON		PORTB |= (1 << PORTB5)
+#define VOLTAGE_CONTROL_OFF		PORTB &= ~(1 << PORTB5)
+#define VOLTAGE_CONTROL_TOGGLE	PINB |= (1 << PINB5)
+
+#define DIRECTION_TOGGLE		PINB |= (1 << PINB4)
 
 enum DIRECTION
 {
@@ -52,6 +54,7 @@ ISR(TIMER3_COMPA_vect)
 		{
 			direction = DECR;
 			duty -= DUTY_STEP;
+			DIRECTION_TOGGLE;
 		}
 		else
 		{
@@ -64,6 +67,7 @@ ISR(TIMER3_COMPA_vect)
 		{
 			direction = INCR;
 			duty += DUTY_STEP;
+			DIRECTION_TOGGLE;
 		}
 		else
 		{
@@ -76,12 +80,12 @@ ISR(TIMER3_COMPA_vect)
 
 ISR(TIMER1_COMPB_vect)
 {
-	LED_ON;
+	VOLTAGE_CONTROL_ON;
 }
 
 ISR(TIMER1_COMPA_vect)
 {
-	LED_OFF;
+	VOLTAGE_CONTROL_OFF;
 }
 
 int main(void)
