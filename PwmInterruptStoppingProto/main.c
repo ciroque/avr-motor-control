@@ -42,7 +42,7 @@ void initOutputs();
 void initPWM();
 void scalePwmDuty();
 
-ISR(TIMER0_COMPA_vect)
+ISR(TIMER3_COMPA_vect)
 {
 	uint16_t duty = OCR1B;
 	
@@ -100,7 +100,7 @@ void calcFrequency(uint8_t freq)
 	OCR1A = MAX_POWER;
 	OCR1B = MIN_POWER;
 	
-	OCR0A = 30 * 7.8125 - 1;
+	OCR3A = 4000 * 7.8125 - 1;
 }
 
 void initClockMode()
@@ -109,8 +109,8 @@ void initClockMode()
 	TCCR1B |= (1 << CS10) | (1 << WGM12);
 	
 	// Timer 0
-	TCCR0A |= (1 << WGM01);							// CTC mode
-	TCCR0B |= /*(1 << CS02) ||*/ (1 << CS00);		// 1024 prescaler
+	TCCR3A |= (1 << WGM31);							// CTC mode
+	TCCR3B |= /*(1 << CS02) ||*/ (1 << CS30);		// 1024 prescaler
 }
 
 void initInterrupts()
@@ -119,7 +119,7 @@ void initInterrupts()
 	TIMSK1 |= (1 << OCIE1B) | (1 << OCIE1A); // Compare Interrupts A & B
 	
 	// Timer 0 Output Compare Interrupt A
-	TIMSK0 |= (1 << OCIE0A);
+	TIMSK3 |= (1 << OCIE2A);
 }
 
 void initOutputs()
