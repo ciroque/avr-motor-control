@@ -19,14 +19,21 @@
 #include <util/delay.h>
 #include <avr/interrupt.h>
 
+#define FALSE 0
+#define TRUE !FALSE
+
 #define VOLTAGE_CONTROL_ON		PORTB |= (1 << PORTB5)
 #define VOLTAGE_CONTROL_OFF		PORTB &= ~(1 << PORTB5)
 #define VOLTAGE_CONTROL_TOGGLE	PINB |= (1 << PINB5)
 
 #define DIRECTION_TOGGLE		PINB |= (1 << PINB4)
 
+#define HOLDING_INDICATOR_OFF	PINB |= (1 << PINB3)
+#define HOLDING_INDICATOR_ON	PINB |= (0 << PINB3)
+
 enum DIRECTION
 {
+	HOLD = -1,
 	INCR = 0,
 	DECR = 1
 };
@@ -44,43 +51,67 @@ void initOutputs();
 void initPWM();
 void scalePwmDuty();
 
-ISR(TIMER3_COMPA_vect)
+inline void enableVoltageControlInterrupts(int enabled) // NOTE: Look into using GPIOR0 as a flag register...
 {
-	uint16_t duty = OCR1B;
-	
-	if(direction == INCR)
+	if(enabled == TRUE)
 	{
-		if(duty >= MAX_POWER)
-		{
-			direction = DECR;
-			duty -= DUTY_STEP;
-			DIRECTION_TOGGLE;
-		}
-		else
-		{
-			duty += DUTY_STEP;
-		}
+		TIMSK1 |= (1 << OCIE1B) | (1 << OCIE1A);
 	}
 	else
 	{
-		if(duty <= MIN_POWER)
+		TIMSK1 |= (0 << OCIE1B) | (0 << OCIE1A);
+	}
+}
+
+ISR(TIMER3_COMPA_vect)
+{
+	if(direction == HOLD)
+	{
+		 // noop, but soon will have timing logic to restart the train.
+		 
+		 // Set holding indicator off when 
+	}
+	else
+	{
+		uint16_t duty = OCR1B;
+	
+		if(direction == INCR)
 		{
-			direction = INCR;
-			duty += DUTY_STEP;
-			DIRECTION_TOGGLE;
+			if(duty >= MAX_POWER)
+			{
+				direction = HOLD;
+				DIRECTION_TOGGLE;
+				HOLDING_INDICATOR_ON;
+			}
+			else
+			{
+				duty += DUTY_STEP;
+			}
 		}
 		else
 		{
-			duty -= DUTY_STEP;
+			if(duty <= MIN_POWER)
+			{
+				direction = INCR;
+				duty += DUTY_STEP;
+				DIRECTION_TOGGLE;
+			}
+			else
+			{
+				duty -= DUTY_STEP;
+			}
 		}
-	}
 	
-	OCR1B = duty;
+		OCR1B = duty;
+	}
 }
 
 ISR(TIMER1_COMPB_vect)
 {
-	VOLTAGE_CONTROL_ON;
+	if(direction != HOLD)
+	{
+		VOLTAGE_CONTROL_ON;
+	}
 }
 
 ISR(TIMER1_COMPA_vect)
@@ -120,7 +151,8 @@ void initClockMode()
 void initInterrupts()
 {
 	// Timer 1 Output Compare Interrupts A and B
-	TIMSK1 |= (1 << OCIE1B) | (1 << OCIE1A); // Compare Interrupts A & B
+	// TIMSK1 |= (1 << OCIE1B) | (1 << OCIE1A); // Compare Interrupts A & B
+	enableVoltageControlInterrupts(TRUE);
 	
 	// Timer 0 Output Compare Interrupt A
 	TIMSK3 |= (1 << OCIE2A);
@@ -128,5 +160,7 @@ void initInterrupts()
 
 void initOutputs()
 {
-	DDRB |= (1 << DDB5) | (1 << DDB4);
+	DDRB |= (1 << DDB5) | (1 << DDB4) | (1 << DDB3);
+	
+	HOLDING_INDICATOR_OFF;
 }
