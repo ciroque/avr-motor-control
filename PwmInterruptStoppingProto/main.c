@@ -23,31 +23,54 @@
 #define LED_OFF		PORTB &= ~(1 << PORTB5)
 #define LED_TOGGLE	PINB |= (1 << PINB5)
 
-const int MAX_OUTPUT = 0xFFFF;
-
 enum DIRECTION
 {
 	INCR = 0,
 	DECR = 1
 };
 
+volatile int direction = INCR;
+
+const int MIN_POWER = 0x00;
+const int MAX_POWER = 0xFFFF;
+const int DUTY_STEP = 1;
+
 void calcFrequency(uint8_t freq);
 void initClockMode();
 void initInterrupts();
 void initOutputs();
 void initPWM();
+void scalePwmDuty();
 
 ISR(TIMER0_COMPA_vect)
 {
 	uint16_t duty = OCR1B;
-	if(duty < MAX_OUTPUT)
+	
+	if(direction == INCR)
 	{
-		duty++;
+		if(duty >= MAX_POWER)
+		{
+			direction = DECR;
+			duty -= DUTY_STEP;
+		}
+		else
+		{
+			duty += DUTY_STEP;
+		}
 	}
 	else
 	{
-		duty = 0;
+		if(duty <= MIN_POWER)
+		{
+			direction = INCR;
+			duty += DUTY_STEP;
+		}
+		else
+		{
+			duty -= DUTY_STEP;
+		}
 	}
+	
 	OCR1B = duty;
 }
 
@@ -74,8 +97,8 @@ int main(void)
 
 void calcFrequency(uint8_t freq)
 {
-	OCR1A = MAX_OUTPUT;
-	OCR1B = 60000;
+	OCR1A = MAX_POWER;
+	OCR1B = MIN_POWER;
 	
 	OCR0A = 30 * 7.8125 - 1;
 }
@@ -86,8 +109,8 @@ void initClockMode()
 	TCCR1B |= (1 << CS10) | (1 << WGM12);
 	
 	// Timer 0
-	TCCR0A |= (1 << WGM01);						// CTC mode
-	TCCR0B |= (1 << CS02) || (1 << CS00);		// 1024 prescaler
+	TCCR0A |= (1 << WGM01);							// CTC mode
+	TCCR0B |= /*(1 << CS02) ||*/ (1 << CS00);		// 1024 prescaler
 }
 
 void initInterrupts()
