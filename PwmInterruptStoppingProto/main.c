@@ -19,74 +19,87 @@
 #include <util/delay.h>
 #include <avr/interrupt.h>
 
+#define LED_ON		PORTB |= (1 << PORTB5)
+#define LED_OFF		PORTB &= ~(1 << PORTB5)
+#define LED_TOGGLE	PINB |= (1 << PINB5)
+
+const int MAX_OUTPUT = 0xFFFF;
+
 enum DIRECTION
 {
 	INCR = 0,
 	DECR = 1
 };
 
-volatile double dutyCycle = 0;
-volatile int direction = INCR;
+void calcFrequency(uint8_t freq);
+void initClockMode();
+void initInterrupts();
+void initOutputs();
+void initPWM();
 
-const int CYCLE_DELAY = 100;
-const int STATE_HOLD = 1000;
-const int DIVISOR = 100;
-const int STEP = 2;
-
-inline double scaleDutyCycle()
+ISR(TIMER0_COMPA_vect)
 {
-	return (dutyCycle / DIVISOR) * 255.0;
+	uint16_t duty = OCR1B;
+	if(duty < MAX_OUTPUT)
+	{
+		duty++;
+	}
+	else
+	{
+		duty = 0;
+	}
+	OCR1B = duty;
 }
 
-void initInputs()
+ISR(TIMER1_COMPB_vect)
 {
-	// Port C as inputs
-	DDRC = (0 << PORTC);
+	LED_ON;
 }
 
-void initOutputs() 
+ISR(TIMER1_COMPA_vect)
 {
-	// Output to Port B pins 6 and 7; 7 will get the Timer 0 output, 6 will toggle on overflow
-	DDRB |= (1 << PORTB7) | (1 << PORTB6);
-	
-	// Set Port B
-}
-
-void initPWM()
-{
-	// Mode should be 11, PWM, Phase Correct
-	// ? Ordering of the flags, doc's show 0 to the right increasing to the left, is it standard to follow that in the code?
-	// ? Is it preferable to be explicit and zero out bits as well as setting bits?
-	TCCR0A = (1 << COM0A1) | (1 << WGM01) | (1 << WGM00);
-	
-	// Enable the Interrupt Overflow for Timer 0
-	TIMSK0 = (1 << TOIE0);
-	
-	// Set the TOP
-	// ? Do I have the mode configured I think I do?
-	OCR0A = scaleDutyCycle();
-
-	// enable interrupts
-	sei();
-
-	// reset the prescaler and use the internal clock,
-	TCCR0B = (1 << CS00) | (1 << CS02);
+	LED_OFF;
 }
 
 int main(void)
 {
-	initInputs();
 	initOutputs();
-	initPWM();
+	initClockMode();
+	initInterrupts();
+	calcFrequency(2);
+	sei();
 	
-    while (1) 
-    {
-    }
+    while(1) {;}
 }
 
-// Timer 0 Interrupt Handler. Simply calculate and update the duty cycle.
-ISR(TIMER0_OVF_vect)
+void calcFrequency(uint8_t freq)
 {
-	OCR0A = scaleDutyCycle();
-	PORTB ^= (1 << PINB6);
+	OCR1A = MAX_OUTPUT;
+	OCR1B = 60000;
+	
+	OCR0A = 30 * 7.8125 - 1;
+}
+
+void initClockMode()
+{
+	// Timer 1; No Prescaler, 
+	TCCR1B |= (1 << CS10) | (1 << WGM12);
+	
+	// Timer 0
+	TCCR0A |= (1 << WGM01);						// CTC mode
+	TCCR0B |= (1 << CS02) || (1 << CS00);		// 1024 prescaler
+}
+
+void initInterrupts()
+{
+	// Timer 1 Output Compare Interrupts A and B
+	TIMSK1 |= (1 << OCIE1B) | (1 << OCIE1A); // Compare Interrupts A & B
+	
+	// Timer 0 Output Compare Interrupt A
+	TIMSK0 |= (1 << OCIE0A);
+}
+
+void initOutputs()
+{
+	DDRB |= (1 << DDB5) | (1 << DDB4);
 }
