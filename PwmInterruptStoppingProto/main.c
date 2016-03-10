@@ -19,9 +19,6 @@
 #include <util/delay.h>
 #include <avr/interrupt.h>
 
-#define FALSE 0
-#define TRUE !FALSE
-
 #define VOLTAGE_CONTROL_ON		PORTB |= (1 << PORTB5)
 #define VOLTAGE_CONTROL_OFF		PORTB &= ~(1 << PORTB5)
 #define VOLTAGE_CONTROL_TOGGLE	PINB |= (1 << PINB5)
@@ -41,7 +38,7 @@ enum DIRECTION
 volatile int direction = INCR;
 
 const int MIN_POWER = 0x00;
-const int MAX_POWER = 0xFFFF;
+const int MAX_POWER = 0xFFFE;
 const int DUTY_STEP = 1;
 
 void calcFrequency(uint8_t freq);
@@ -50,18 +47,6 @@ void initInterrupts();
 void initOutputs();
 void initPWM();
 void scalePwmDuty();
-
-inline void enableVoltageControlInterrupts(int enabled) // NOTE: Look into using GPIOR0 as a flag register...
-{
-	if(enabled == TRUE)
-	{
-		TIMSK1 |= (1 << OCIE1B) | (1 << OCIE1A);
-	}
-	else
-	{
-		TIMSK1 |= (0 << OCIE1B) | (0 << OCIE1A);
-	}
-}
 
 ISR(TIMER3_COMPA_vect)
 {
@@ -79,6 +64,7 @@ ISR(TIMER3_COMPA_vect)
 		{
 			if(duty >= MAX_POWER)
 			{
+				duty = 65535;
 				direction = HOLD;
 				DIRECTION_TOGGLE;
 				HOLDING_INDICATOR_ON;
@@ -108,10 +94,7 @@ ISR(TIMER3_COMPA_vect)
 
 ISR(TIMER1_COMPB_vect)
 {
-	if(direction != HOLD)
-	{
-		VOLTAGE_CONTROL_ON;
-	}
+	VOLTAGE_CONTROL_ON;
 }
 
 ISR(TIMER1_COMPA_vect)
@@ -143,16 +126,16 @@ void initClockMode()
 	// Timer 1; No Prescaler, 
 	TCCR1B |= (1 << CS10) | (1 << WGM12);
 	
-	// Timer 0
+	// Timer 3
 	TCCR3A |= (1 << WGM31);							// CTC mode
-	TCCR3B |= /*(1 << CS02) ||*/ (1 << CS30);		// 1024 prescaler
+	TCCR3B |= (0 << CS32) | (0 << CS31) | (1 << CS30);		// 1024 prescaler
 }
 
 void initInterrupts()
 {
 	// Timer 1 Output Compare Interrupts A and B
 	// TIMSK1 |= (1 << OCIE1B) | (1 << OCIE1A); // Compare Interrupts A & B
-	enableVoltageControlInterrupts(TRUE);
+	TIMSK1 |= (1 << OCIE1B) | (1 << OCIE1A);
 	
 	// Timer 0 Output Compare Interrupt A
 	TIMSK3 |= (1 << OCIE2A);
@@ -161,6 +144,5 @@ void initInterrupts()
 void initOutputs()
 {
 	DDRB |= (1 << DDB5) | (1 << DDB4) | (1 << DDB3);
-	
 	HOLDING_INDICATOR_OFF;
 }
