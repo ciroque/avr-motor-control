@@ -43,6 +43,7 @@ const int DUTY_STEP = 1;
 
 void calcFrequency(uint8_t freq);
 void initClockMode();
+void initInputs();
 void initInterrupts();
 void initOutputs();
 void initPWM();
@@ -102,8 +103,9 @@ ISR(TIMER1_COMPA_vect)
 	VOLTAGE_CONTROL_OFF;
 }
 
-int main(void)
+int main()
 {
+	initInputs();
 	initOutputs();
 	initClockMode();
 	initInterrupts();
@@ -117,8 +119,7 @@ void calcFrequency(uint8_t freq)
 {
 	OCR1A = MAX_POWER;
 	OCR1B = MIN_POWER;
-	
-	OCR3A = 4000 * 7.8125 - 1;
+	OCR3A = ((F_CPU / 1000) / 8) / 7;
 }
 
 void initClockMode()
@@ -127,18 +128,22 @@ void initClockMode()
 	TCCR1B |= (1 << CS10) | (1 << WGM12);
 	
 	// Timer 3
-	TCCR3A |= (1 << WGM31);							// CTC mode
-	TCCR3B |= (0 << CS32) | (0 << CS31) | (1 << CS30);		// 1024 prescaler
+	TCCR3A |= (1 << WGM32);															// CTC mode
+	TCCR3B |= (1 << WGM32) | (0 << CS32) | (1 << CS31) | (0 << CS30);				// prescaler 8
+}
+
+void initInputs()
+{
+	
 }
 
 void initInterrupts()
 {
 	// Timer 1 Output Compare Interrupts A and B
-	// TIMSK1 |= (1 << OCIE1B) | (1 << OCIE1A); // Compare Interrupts A & B
 	TIMSK1 |= (1 << OCIE1B) | (1 << OCIE1A);
 	
 	// Timer 0 Output Compare Interrupt A
-	TIMSK3 |= (1 << OCIE2A);
+	TIMSK3 |= (1 << OCIE3A);
 }
 
 void initOutputs()
