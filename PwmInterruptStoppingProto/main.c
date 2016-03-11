@@ -19,29 +19,37 @@
 #include <util/delay.h>
 #include <avr/interrupt.h>
 
-#define VOLTAGE_CONTROL_ON		PORTB |= (1 << PORTB5)
-#define VOLTAGE_CONTROL_OFF		PORTB &= ~(1 << PORTB5)
-#define VOLTAGE_CONTROL_TOGGLE	PINB |= (1 << PINB5)
 
-#define DIRECTION_TOGGLE		PINB |= (1 << PINB4)
+#define VOLTAGE_CONTROL_ON		PORTC |= (1 << PORTC5)
+#define VOLTAGE_CONTROL_OFF		PORTC &= ~(1 << PORTC5)
 
-#define HOLDING_INDICATOR_OFF	PINB |= (1 << PINB3)
-#define HOLDING_INDICATOR_ON	PINB |= (0 << PINB3)
+#define DIRECTION_CONTROL_OFF	PORTC |= (1 << PORTC4)
+#define DIRECTION_CONTROL_ON	PORTC &= ~(1 << PORTC4)
+
+#define HOLDING_INDICATOR_OFF	PORTC |= (1 << PORTC3)
+#define HOLDING_INDICATOR_ON	PORTC &= ~(1 << PORTC3)
+
+#define EXTERNAL_INTERRUPT_INDICATOR_OFF	PORTC |= (1 << PORTC0)
+#define EXTERNAL_INTERRUPT_INDICATOR_ON		PORTC &= ~(1 << PORTC0)
 
 enum DIRECTION
 {
 	HOLD = -1,
-	INCR = 0,
-	DECR = 1
+	ACCELERATE = 0,
+	DECELERATE = 1,
+	DECELERATE_TO_HOLD = 2,
+	HOLD_TO_ACCELERATE = 3
 };
 
-volatile int direction = INCR;
+volatile int direction = ACCELERATE;
 
 const int MIN_POWER = 0x00;
 const int MAX_POWER = 0xFFFE;
 const int DUTY_STEP = 1;
 
 void calcFrequency(uint8_t freq);
+uint16_t handleAccelerate(uint16_t duty);
+uint16_t handleDecelerate(uint16_t duty);
 void initClockMode();
 void initInputs();
 void initInterrupts();
@@ -51,45 +59,40 @@ void scalePwmDuty();
 
 ISR(TIMER3_COMPA_vect)
 {
-	if(direction == HOLD)
-	{
-		 // noop, but soon will have timing logic to restart the train.
-		 
-		 // Set holding indicator off when 
-	}
-	else
-	{
-		uint16_t duty = OCR1B;
 	
-		if(direction == INCR)
+	switch(direction)
+	{
+		case HOLD:
 		{
-			if(duty >= MAX_POWER)
-			{
-				duty = 65535;
-				direction = HOLD;
-				DIRECTION_TOGGLE;
-				HOLDING_INDICATOR_ON;
-			}
-			else
-			{
-				duty += DUTY_STEP;
-			}
+			HOLDING_INDICATOR_ON;
+			DIRECTION_CONTROL_OFF;
+			break;
 		}
-		else
+		
+		case ACCELERATE: 
 		{
-			if(duty <= MIN_POWER)
-			{
-				direction = INCR;
-				duty += DUTY_STEP;
-				DIRECTION_TOGGLE;
-			}
-			else
-			{
-				duty -= DUTY_STEP;
-			}
+			HOLDING_INDICATOR_OFF;
+			DIRECTION_CONTROL_ON;
+			uint16_t duty = OCR1B;
+			OCR1B = handleAccelerate(duty);
+			break;
 		}
-	
-		OCR1B = duty;
+		
+		case DECELERATE: 
+		{
+			HOLDING_INDICATOR_OFF;
+			DIRECTION_CONTROL_OFF;
+			uint16_t duty = OCR1B;
+			OCR1B = handleDecelerate(duty);
+			break;
+		}
+		
+		case HOLD_TO_ACCELERATE:
+		{
+			HOLDING_INDICATOR_ON;
+			DIRECTION_CONTROL_OFF;
+			break;
+		}
 	}
 }
 
@@ -103,13 +106,22 @@ ISR(TIMER1_COMPA_vect)
 	VOLTAGE_CONTROL_OFF;
 }
 
+ISR(PCINT0_vect)
+{
+	PINC |= (1 << PINC0);
+	if(direction == HOLD)
+	{
+		direction = DECELERATE;
+	}
+}
+
 int main()
 {
 	initInputs();
 	initOutputs();
 	initClockMode();
 	initInterrupts();
-	calcFrequency(2);
+	calcFrequency(7);
 	sei();
 	
     while(1) {;}
@@ -119,7 +131,37 @@ void calcFrequency(uint8_t freq)
 {
 	OCR1A = MAX_POWER;
 	OCR1B = MIN_POWER;
-	OCR3A = ((F_CPU / 1000) / 8) / 7;
+	OCR3A = ((F_CPU / 1000) / 8) / freq;
+}
+
+uint16_t handleAccelerate(uint16_t duty)
+{
+	if(duty >= MAX_POWER)
+	{
+		duty = 65535;
+		direction = HOLD;
+	}
+	else
+	{
+		duty += DUTY_STEP;
+	}
+	
+	return duty;
+}
+
+uint16_t handleDecelerate(uint16_t duty)
+{
+	if(duty <= MIN_POWER)
+	{
+		duty = MIN_POWER;
+		direction = HOLD_TO_ACCELERATE;
+	}
+	else
+	{
+		duty -= DUTY_STEP;
+	}
+	
+	return duty;
 }
 
 void initClockMode()
@@ -134,7 +176,7 @@ void initClockMode()
 
 void initInputs()
 {
-	
+	DDRA |= (0 << DDA0);		// pin 1 as input
 }
 
 void initInterrupts()
@@ -144,10 +186,17 @@ void initInterrupts()
 	
 	// Timer 0 Output Compare Interrupt A
 	TIMSK3 |= (1 << OCIE3A);
+	
+	// external interrupt Port A, Pin 1
+	PCIFR |= (1 << PCIF0);
+	PCMSK0 |= (1 << PCINT0);
+	PCICR |= (1 << PCIE0);
 }
 
 void initOutputs()
 {
-	DDRB |= (1 << DDB5) | (1 << DDB4) | (1 << DDB3);
+	DDRC |= (1 << DDC5) | (1 << DDC4) | (1 << DDC3) | (1 << DDC0);
 	HOLDING_INDICATOR_OFF;
+	DIRECTION_CONTROL_ON;
+	EXTERNAL_INTERRUPT_INDICATOR_OFF;
 }
