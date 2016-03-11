@@ -32,7 +32,7 @@
 #define EXTERNAL_INTERRUPT_INDICATOR_OFF	PORTC |= (1 << PORTC0)
 #define EXTERNAL_INTERRUPT_INDICATOR_ON		PORTC &= ~(1 << PORTC0)
 
-enum DIRECTION
+enum MOTION_TRANSITIONS
 {
 	HOLD = -1,
 	ACCELERATE = 0,
@@ -41,16 +41,18 @@ enum DIRECTION
 	HOLD_TO_ACCELERATE = 3
 };
 
-volatile int direction = ACCELERATE;
+volatile int motion_transitions = ACCELERATE;
+volatile int timer3_overflow_count = 0;
 
 const int MIN_POWER = 0x00;
 const int MAX_POWER = 0xFFFE;
 const int DUTY_STEP = 1;
 
-void calcFrequency(uint8_t freq);
+void establishBaseFrequencies(uint8_t freq);
 uint16_t handleAccelerate(uint16_t duty);
 uint16_t handleDecelerate(uint16_t duty);
-void initClockMode();
+void holdForMillis(uint16_t millis);
+void initTimers();
 void initInputs();
 void initInterrupts();
 void initOutputs();
@@ -59,8 +61,9 @@ void scalePwmDuty();
 
 ISR(TIMER3_COMPA_vect)
 {
+	timer3_overflow_count++;
 	
-	switch(direction)
+	switch(motion_transitions)
 	{
 		case HOLD:
 		{
@@ -91,6 +94,7 @@ ISR(TIMER3_COMPA_vect)
 		{
 			HOLDING_INDICATOR_ON;
 			DIRECTION_CONTROL_OFF;
+			holdForMillis(65535);
 			break;
 		}
 	}
@@ -109,9 +113,9 @@ ISR(TIMER1_COMPA_vect)
 ISR(PCINT0_vect)
 {
 	PINC |= (1 << PINC0);
-	if(direction == HOLD)
+	if(motion_transitions == HOLD)
 	{
-		direction = DECELERATE;
+		motion_transitions = DECELERATE;
 	}
 }
 
@@ -119,27 +123,28 @@ int main()
 {
 	initInputs();
 	initOutputs();
-	initClockMode();
+	initTimers();
 	initInterrupts();
-	calcFrequency(7);
+	establishBaseFrequencies(7);
 	sei();
 	
     while(1) {;}
 }
 
-void calcFrequency(uint8_t freq)
+void establishBaseFrequencies(uint8_t freq)
 {
 	OCR1A = MAX_POWER;
 	OCR1B = MIN_POWER;
 	OCR3A = ((F_CPU / 1000) / 8) / freq;
 }
 
+ // NOTE: Needs work to make the acceleration curve match that of a real locomotive...
 uint16_t handleAccelerate(uint16_t duty)
 {
 	if(duty >= MAX_POWER)
 	{
 		duty = 65535;
-		direction = HOLD;
+		motion_transitions = HOLD;
 	}
 	else
 	{
@@ -149,12 +154,13 @@ uint16_t handleAccelerate(uint16_t duty)
 	return duty;
 }
 
+ // NOTE: Needs work to be able to control the rate of deceleration to land the locomotive where we want it...
 uint16_t handleDecelerate(uint16_t duty)
 {
 	if(duty <= MIN_POWER)
 	{
 		duty = MIN_POWER;
-		direction = HOLD_TO_ACCELERATE;
+		motion_transitions = HOLD_TO_ACCELERATE;
 	}
 	else
 	{
@@ -164,7 +170,16 @@ uint16_t handleDecelerate(uint16_t duty)
 	return duty;
 }
 
-void initClockMode()
+ // NOTE: This needs serious work to be able to finely control the delay...
+void holdForMillis(uint16_t millis)
+{
+	if(timer3_overflow_count >= millis)
+	{
+		motion_transitions = ACCELERATE;
+	}
+}
+
+void initTimers()
 {
 	// Timer 1; No Prescaler, 
 	TCCR1B |= (1 << CS10) | (1 << WGM12);
