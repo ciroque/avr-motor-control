@@ -87,6 +87,7 @@ ISR(TIMER3_COMPA_vect)
 			DIRECTION_CONTROL_OFF;
 			uint16_t duty = OCR1B;
 			OCR1B = handleDecelerate(duty);
+			timer3_overflow_count = 0;
 			break;
 		}
 		
